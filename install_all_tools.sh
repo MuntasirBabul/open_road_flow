@@ -1,13 +1,23 @@
 #########################################################################
 #                   define installation directory                       #
 #########################################################################
-INSTALLATION_DIR="/opt/tools"
-MODULE_FILE_DIR="/opt/modulefiles"
+ROOT_INSTALLATION="no"
 
-sudo mkdir -p $INSTALLATION_DIR
-sudo mkdir -p $MODULE_FILE_DIR
+if [ "$ROOT_INSTALLATION" = "yes" ]; then
+    ROOT_ARG="sudo "
+    INSTALLATION_DIR="/opt/tools"
+    MODULE_FILE_DIR="/opt/modulefiles"
+    sudo sh -c "echo 'module use $MODULE_FILE_DIR' >> /etc/profile.d/modules.sh"
+else
+    ROOT_ARG=""
+    INSTALLATION_DIR="~/tools"
+    MODULE_FILE_DIR="~/modulefiles"
+    sudo sh -c "echo 'module use $MODULE_FILE_DIR' >> ~/.bashrc"
+fi
 
-sudo sh -c 'echo "module use /opt/modulefiles" >> /etc/profile.d/modules.sh'
+$ROOT_ARG mkdir -p $INSTALLATION_DIR
+$ROOT_ARG mkdir -p $MODULE_FILE_DIR
+
 #########################################################################
 #                            Install yosys                              #
 #########################################################################
@@ -22,13 +32,13 @@ git submodule update --init --recursive
 
 ### Install
 make -j$(nproc)
-sudo make install PREFIX=$YOSYS_HOME
+$ROOT_ARG make install PREFIX=$YOSYS_HOME
 
 ### create module according to tool version
-sudo sh -c "echo '#%Module1.0'                                                  >> $YOSYS_MODULE_FILE"
-sudo sh -c "echo 'setenv YOSYS_HOME $YOSYS_HOME'                                >> $YOSYS_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(YOSYS_HOME)/bin'                      >> $YOSYS_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(YOSYS_HOME)/lib'           >> $YOSYS_MODULE_FILE"
+$ROOT_ARG sh -c "echo '#%Module1.0'                                                  >> $YOSYS_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'setenv YOSYS_HOME $YOSYS_HOME'                                >> $YOSYS_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path PATH \$env(YOSYS_HOME)/bin'                      >> $YOSYS_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(YOSYS_HOME)/lib'           >> $YOSYS_MODULE_FILE"
 #########################################################################
 #                            Install OpenROAD                           #
 #########################################################################
@@ -42,17 +52,17 @@ git checkout tags/$OPENROAD_VER
 git submodule update --init --recursive
 
 ### Build and Install
-sudo ./etc/DependencyInstaller.sh -all
+$ROOT_ARG ./etc/DependencyInstaller.sh -all
 mkdir build && cd build
-sudo cmake .. -DCMAKE_INSTALL_PREFIX=$OPENROAD_HOME
+$ROOT_ARG cmake .. -DCMAKE_INSTALL_PREFIX=$OPENROAD_HOME
 make -j$(nproc)
-sudo make install
+$ROOT_ARG make install
 
 ### create module according to tool version
-sudo sh -c "echo '#%Module1.0'                                                  >> $OPENROAD_MODULE_FILE"
-sudo sh -c "echo 'setenv OPENROAD_HOME $OPENROAD_HOME'                          >> $OPENROAD_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(OPENROAD_HOME)/bin'                   >> $OPENROAD_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(OPENROAD_HOME)/lib'        >> $OPENROAD_MODULE_FILE"
+$ROOT_ARG sh -c "echo '#%Module1.0'                                                  >> $OPENROAD_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'setenv OPENROAD_HOME $OPENROAD_HOME'                          >> $OPENROAD_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path PATH \$env(OPENROAD_HOME)/bin'                   >> $OPENROAD_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(OPENROAD_HOME)/lib'        >> $OPENROAD_MODULE_FILE"
 #########################################################################
 #                            Install klayout                            #
 #########################################################################
@@ -66,15 +76,15 @@ git checkout tags/$KLAYOUT_VER
 git submodule update --init --recursive
 
 ### Build and Install
-sudo mkdir -p $KLAYOUT_HOME/bin
+$ROOT_ARG mkdir -p $KLAYOUT_HOME/bin
 mkdir build 
-sudo ./build.sh -build ./build -bin $KLAYOUT_HOME/bin -option "-j$(nproc)" -noruby
+$ROOT_ARG ./build.sh -build ./build -bin $KLAYOUT_HOME/bin -option "-j$(nproc)" -noruby
 
 ### create module according to tool version
-sudo sh -c "echo '#%Module1.0'                                                  >> $KLAYOUT_MODULE_FILE"
-sudo sh -c "echo 'setenv KLAYOUT_HOME $KLAYOUT_HOME'                            >> $KLAYOUT_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(KLAYOUT_HOME)/bin'                    >> $KLAYOUT_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(KLAYOUT_HOME)/lib'         >> $KLAYOUT_MODULE_FILE"
+$ROOT_ARG sh -c "echo '#%Module1.0'                                                  >> $KLAYOUT_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'setenv KLAYOUT_HOME $KLAYOUT_HOME'                            >> $KLAYOUT_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path PATH \$env(KLAYOUT_HOME)/bin'                    >> $KLAYOUT_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(KLAYOUT_HOME)/lib'         >> $KLAYOUT_MODULE_FILE"
 #########################################################################
 #                         Install Verilator                             #
 #########################################################################
@@ -91,52 +101,51 @@ git submodule update --init --recursive
 autoconf
 ./configure --prefix $VERILATOR_HOME
 make -j `nproc`
-sudo make install
+$ROOT_ARG make install
 
 ### create module according to tool version
-sudo sh -c "echo '#%Module1.0'                                                  >> $VERILATOR_MODULE_FILE"
-sudo sh -c "echo 'setenv VERILATOR_HOME $VERILATOR_HOME'                        >> $VERILATOR_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(VERILATOR_HOME)/bin'                  >> $VERILATOR_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(VERILATOR_HOME)/lib'       >> $VERILATOR_MODULE_FILE"
+$ROOT_ARG sh -c "echo '#%Module1.0'                                                  >> $VERILATOR_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'setenv VERILATOR_HOME $VERILATOR_HOME'                        >> $VERILATOR_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path PATH \$env(VERILATOR_HOME)/bin'                  >> $VERILATOR_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(VERILATOR_HOME)/lib'       >> $VERILATOR_MODULE_FILE"
 #########################################################################
 #                           Install cocotb                              #
 #########################################################################
-cd ~ ; git clone https://github.com/cocotb/cocotb.git ; cd cocotb
+#cd ~ ; git clone https://github.com/cocotb/cocotb.git ; cd cocotb
 
 #COCOTB_VER=$(git describe --tags --abbrev=0)
 COCOTB_VER="v1.9.2" # Latest version is beta version; using the stable one
-#COCOTB_HOME="$INSTALLATION_DIR/cocotb/$COCOTB_VER"                              ; sudo mkdir -p $COCOTB_HOME
+COCOTB_HOME="$INSTALLATION_DIR/cocotb/$COCOTB_VER"                              ; sudo mkdir -p $COCOTB_HOME
 COCOTB_MODULE_FILE="$MODULE_FILE_DIR/cocotb/$COCOTB_VER"                        ; sudo mkdir -p $MODULE_FILE_DIR/cocotb ; sudo touch $COCOTB_MODULE_FILE
 
-# cocotb will be installed pipx virtual env
-PIPX_HOME="$INSTALLATION_DIR/pipx"
-PIPX_VENV_DIR="$PIPX_HOME/venvs"
-COCOTB_HOME="$PIPX_VENV_DIR/cocotb"
-COCOTB_MODULE_FILE="$MODULE_FILE_DIR/cocotb/$COCOTB_VER"
+# Creating virutal directory
+$ROOT_ARG python3 -m venv $COCOTB_HOME/venv
+#source  $COCOTB_HOME/venv/bin/activate
 
-# Create directories if they don't exist
-sudo mkdir -p $PIPX_HOME $PIPX_VENV_DIR $PIPX_MODULE_DIR
-sudo chown -R $USER:$USER $TOOLS_DIR
+# Calling Virutal env pip to install in virtual env
+$ROOT_ARG $COCOTB_HOME/venv/bin/pip install cocotb==$COCOTB_VER
+$ROOT_ARG $COCOTB_HOME/venv/bin/pip install cocotb[bus]
+$ROOT_ARG $COCOTB_HOME/venv/bin/pip install cocotb-coverage
+$ROOT_ARG $COCOTB_HOME/venv/bin/pip install cocotb-test
+$ROOT_ARG $COCOTB_HOME/venv/bin/pip install pytest
+$ROOT_ARG $COCOTB_HOME/venv/bin/pip install numpy
+$ROOT_ARG $COCOTB_HOME/venv/bin/pip install regression
 
-# Set environment for this session
-export PIPX_HOME=$PIPX_HOME
-export PIPX_VENV_DIR=$PIPX_VENV_DIR
-export PATH=$PIPX_HOME/bin:$PATH
-
-# Install Cocotb via pipx
-pipx install cocotb==$COCOTB_VER
+PYTHON_VER=$(python3 --version | awk '{print $2}' | awk -F '.' '{print "python"$1"."$2}')
+#deactivate
 
 ### create module according to tool version
-sudo sh -c "echo '#%Module1.0'                                                  >> $COCOTB_MODULE_FILE"
-sudo sh -c "echo 'setenv COCOTB_HOME $COCOTB_HOME'                              >> $COCOTB_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH $PIPX_HOME/bin'				>> $COCOTB_MODULE_FILE"
-#sudo sh -c "echo 'prepend-path PATH \$env(COCOTB_HOME)/bin'                     >> $COCOTB_MODULE_FILE"
-#sudo sh -c "echo 'prepend-path PYTHONPATH \$env(COCOTB_HOME)'                     >> $COCOTB_MODULE_FILE"
-#sudo sh -c "prepend-path PYTHONPATH $env(COCOTB_HOME)/lib/python3.11/site-packages >> $COCOTB_MODULE_FILE"
-
-
-
-
-
-
-
+$ROOT_ARG sh -c "echo '#%Module1.0'                                                  >> $COCOTB_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'setenv COCOTB_HOME $COCOTB_HOME'                              >> $COCOTB_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path PATH \$envCOCOTB_HOME/venv/bin'                  >> $COCOTB_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'prepend-path PYTHONPATH \$env(COCOTB_HOME)/venv/lib/$PYTHON_VER/site-packages' >> $COCOTB_MODULE_FILE"
+$ROOT_ARG sh -c "echo 'conflict cocotb'                                              >> $COCOTB_MODULE_FILE"
+#########################################################################
+#                   Create Environment file to source                   #
+#########################################################################
+# source the env.sh to load all the modules
+$ROOT_ARG sh -c "echo 'module load verilator/$VERILATOR_VER'                         >> env.sh"
+$ROOT_ARG sh -c "echo 'module load yosys/$YOSYS_VER'                                 >> env.sh"
+$ROOT_ARG sh -c "echo 'module load openroad/$OPENROAD_VER'                           >> env.sh"
+$ROOT_ARG sh -c "echo 'module load klayout/$KLAYOUT_VER'                             >> env.sh"
+$ROOT_ARG sh -c "echo 'module load cocotb/$COCOTB_VER'                               >> env.sh"
