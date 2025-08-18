@@ -76,7 +76,7 @@ sudo sh -c "echo 'setenv KLAYOUT_HOME $KLAYOUT_HOME'                            
 sudo sh -c "echo 'prepend-path PATH \$env(KLAYOUT_HOME)/bin'                    >> $KLAYOUT_MODULE_FILE"
 sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(KLAYOUT_HOME)/lib'         >> $KLAYOUT_MODULE_FILE"
 #########################################################################
-#     			  Install Verilator                             #
+#                         Install Verilator                             #
 #########################################################################
 cd ~ ; git clone https://github.com/verilator/verilator ; cd verilator ; unset VERILATOR_ROOT 
 
@@ -101,5 +101,42 @@ sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(VERILATOR_HOME)/lib'       
 #########################################################################
 #                           Install cocotb                              #
 #########################################################################
+cd ~ ; git clone https://github.com/cocotb/cocotb.git ; cd cocotb
+
+#COCOTB_VER=$(git describe --tags --abbrev=0)
+COCOTB_VER="v1.9.2" # Latest version is beta version; using the stable one
+#COCOTB_HOME="$INSTALLATION_DIR/cocotb/$COCOTB_VER"                              ; sudo mkdir -p $COCOTB_HOME
+COCOTB_MODULE_FILE="$MODULE_FILE_DIR/cocotb/$COCOTB_VER"                        ; sudo mkdir -p $MODULE_FILE_DIR/cocotb ; sudo touch $COCOTB_MODULE_FILE
+
+# cocotb will be installed pipx virtual env
+PIPX_HOME="$INSTALLATION_DIR/pipx"
+PIPX_VENV_DIR="$PIPX_HOME/venvs"
+COCOTB_HOME="$PIPX_VENV_DIR/cocotb"
+COCOTB_MODULE_FILE="$MODULE_FILE_DIR/cocotb/$COCOTB_VER"
+
+# Create directories if they don't exist
+sudo mkdir -p $PIPX_HOME $PIPX_VENV_DIR $PIPX_MODULE_DIR
+sudo chown -R $USER:$USER $TOOLS_DIR
+
+# Set environment for this session
+export PIPX_HOME=$PIPX_HOME
+export PIPX_VENV_DIR=$PIPX_VENV_DIR
+export PATH=$PIPX_HOME/bin:$PATH
+
+# Install Cocotb via pipx
+pipx install cocotb==$COCOTB_VER
+
+### create module according to tool version
+sudo sh -c "echo '#%Module1.0'                                                  >> $COCOTB_MODULE_FILE"
+sudo sh -c "echo 'setenv COCOTB_HOME $COCOTB_HOME'                              >> $COCOTB_MODULE_FILE"
+sudo sh -c "echo 'prepend-path PATH $PIPX_HOME/bin'				>> $COCOTB_MODULE_FILE"
+#sudo sh -c "echo 'prepend-path PATH \$env(COCOTB_HOME)/bin'                     >> $COCOTB_MODULE_FILE"
+#sudo sh -c "echo 'prepend-path PYTHONPATH \$env(COCOTB_HOME)'                     >> $COCOTB_MODULE_FILE"
+#sudo sh -c "prepend-path PYTHONPATH $env(COCOTB_HOME)/lib/python3.11/site-packages >> $COCOTB_MODULE_FILE"
+
+
+
+
+
 
 
