@@ -1,108 +1,103 @@
-
-sudo mkdir -p /opt/tools
-sudo mkdir -p /opt/modulefiles
-sudo sh -c 'echo "module use /opt/modulefiles" >> /etc/profile.d/modules.sh'
-
-#sudo apt install ssh
-#ssh-keygen -t rsa
-
+#########################################################################
+#                   define installation directory                       #
+#########################################################################
 INSTALLATION_DIR="/opt/tools"
+MODULE_FILE_DIR="/opt/modulefiles"
 
+sudo mkdir -p $INSTALLATION_DIR
+sudo mkdir -p $MODULE_FILE_DIR
+
+sudo sh -c 'echo "module use /opt/modulefiles" >> /etc/profile.d/modules.sh'
 #########################################################################
-#     			  Install yosys					#
+#                            Install yosys                              #
 #########################################################################
-YOSYS_HOME="$INSTALLATION_DIR/yosys"
-cd ~ 
-git clone https://github.com/YosysHQ/yosys.git
-cd yosys
+cd ~  ; git clone https://github.com/YosysHQ/yosys.git ; cd yosys
+
+YOSYS_VER=$(git describe --tags --abbrev=0)
+YOSYS_HOME="$INSTALLATION_DIR/yosys/$YOSYS_VER"                                 ; sudo mkdir -p $YOSYS_HOME
+YOSYS_MODULE_FILE="$MODULE_FILE_DIR/yosys/$YOSYS_VER"                           ; sudo mkdir -p $MODULE_FILE_DIR/yosys    ; sudo touch $YOSYS_MODULE_FILE
+
+git checkout tags/$YOSYS_VER
 git submodule update --init --recursive
+
+### Install
 make -j$(nproc)
 sudo make install PREFIX=$YOSYS_HOME
 
-# create module according to yosys version
-YOSYS_VER=$($YOSYS_HOME/bin/yosys -V | awk '{print $2}'  | awk -F'+' '{print $1}')
-YOSYS_MODULE_FILE="/opt/modulefiles/yosys/$YOSYS_VER"
-sudo mkdir -p /opt/modulefiles/yosys
+### create module according to tool version
+sudo sh -c "echo '#%Module1.0'                                                  >> $YOSYS_MODULE_FILE"
+sudo sh -c "echo 'setenv YOSYS_HOME $YOSYS_HOME'                                >> $YOSYS_MODULE_FILE"
+sudo sh -c "echo 'prepend-path PATH \$env(YOSYS_HOME)/bin'                      >> $YOSYS_MODULE_FILE"
+sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(YOSYS_HOME)/lib'           >> $YOSYS_MODULE_FILE"
+#########################################################################
+#                            Install OpenROAD                           #
+#########################################################################
+cd ~ ; git clone https://github.com/The-OpenROAD-Project/OpenROAD.git ; cd OpenROAD
 
-sudo touch $YOSYS_MODULE_FILE
-sudo sh -c "echo '#%Module1.0' 						>> $YOSYS_MODULE_FILE"
-sudo sh -c "echo 'setenv YOSYS_HOME /opt/tools/yosys' 			>> $YOSYS_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(YOSYS_HOME)/bin' 		>> $YOSYS_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(YOSYS_HOME)/lib' 	>> $YOSYS_MODULE_FILE"
-#########################################################################
-#     			  Install OpenROAD				#
-#########################################################################
-cd ~
-git clone https://github.com/The-OpenROAD-Project/OpenROAD.git
-cd OpenROAD
+OPENROAD_VER=$(git describe --tags --abbrev=0)
+OPENROAD_HOME="$INSTALLATION_DIR/openroad/$OPENROAD_VER"                        ; sudo mkdir -p $OPENROAD_HOME
+OPENROAD_MODULE_FILE="$MODULE_FILE_DIR/openroad/$OPENROAD_VER"                  ; sudo mkdir -p $MODULE_FILE_DIR/openroad ; sudo touch $OPENROAD_MODULE_FILE
+
+git checkout tags/$OPENROAD_VER
 git submodule update --init --recursive
-sudo ./etc/DependencyInstaller.sh -all
 
-OPENROAD_HOME="/opt/tools/openroad"
-sudo mkdir -p $OPENROAD_HOME 
+### Build and Install
+sudo ./etc/DependencyInstaller.sh -all
 mkdir build && cd build
 sudo cmake .. -DCMAKE_INSTALL_PREFIX=$OPENROAD_HOME
 make -j$(nproc)
 sudo make install
 
-OPENROAD_VER=$($OPENROAD_HOME/bin/openroad -version | awk -F'-' '{print $1}' | awk -F'v' '{print $2}')
-OPENROAD_MODULE_FILE="/opt/modulefiles/openroad/$OPENROAD_VER"
-
-sudo mkdir -p /opt/modulefiles/openroad
-sudo touch $OPENROAD_MODULE_FILE
-sudo sh -c "echo '#%Module1.0' 							>> $OPENROAD_MODULE_FILE"
-sudo sh -c "echo 'setenv OPENROAD_HOME /opt/tools/openroad' 			>> $OPENROAD_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(OPENROAD_HOME)/bin' 			>> $OPENROAD_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(OPENROAD_HOME)/lib' 	>> $OPENROAD_MODULE_FILE"
-
+### create module according to tool version
+sudo sh -c "echo '#%Module1.0'                                                  >> $OPENROAD_MODULE_FILE"
+sudo sh -c "echo 'setenv OPENROAD_HOME $OPENROAD_HOME'                          >> $OPENROAD_MODULE_FILE"
+sudo sh -c "echo 'prepend-path PATH \$env(OPENROAD_HOME)/bin'                   >> $OPENROAD_MODULE_FILE"
+sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(OPENROAD_HOME)/lib'        >> $OPENROAD_MODULE_FILE"
 #########################################################################
 #     			  Install klayout				#
 #########################################################################
-cd ~
-KLAYOUT_VER=$(git ls-remote --tags https://github.com/KLayout/klayout.git | awk -F/ '{print $3}' | grep -E '^v[0-9]+' | sort -V | tail -1)
-git clone https://github.com/KLayout/klayout.git
-git checkout $KLAYOUT_VER
-cd klayout
+cd ~ ; git clone https://github.com/KLayout/klayout.git ; cd klayout
 
-KLAYOUT_HOME="/opt/tools/klayout"
-sudo mkdir -p $KLAYOUT_HOME
+KLAYOUT_VER=$(git describe --tags --abbrev=0)
+KLAYOUT_HOME="$INSTALLATION_DIR/klayout/$KLAYOUT_VER"                           ; sudo mkdir -p $KLAYOUT_HOME
+KLAYOUT_MODULE_FILE="$MODULE_FILE_DIR/klayout/$KLAYOUT_VER"                     ; sudo mkdir -p $MODULE_FILE_DIR/klayout ; sudo touch $KLAYOUT_MODULE_FILE
+
+git checkout tags/$KLAYOUT_VER
+git submodule update --init --recursive
+
+### Build and Install
 sudo mkdir -p $KLAYOUT_HOME/bin
 mkdir build 
 sudo ./build.sh -build ./build -bin $KLAYOUT_HOME/bin -option "-j$(nproc)" -noruby
 
-KLAYOUT_VER=$($KLAYOUT_HOME/klayout -v | awk '{print $2}')
-KLAYOUT_MODULE_FILE="/opt/modulefiles/klayout/$KLAYOUT_VER"
-
-sudo mkdir -p /opt/modulefiles/klayout
-sudo touch $KLAYOUT_MODULE_FILE
-sudo sh -c "echo '#%Module1.0' 							>> $KLAYOUT_MODULE_FILE"
-sudo sh -c "echo 'setenv KLAYOUT_HOME /opt/tools/klayout' 			>> $KLAYOUT_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(KLAYOUT_HOME)/bin' 			>> $KLAYOUT_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(KLAYOUT_HOME)/lib' 	>> $KLAYOUT_MODULE_FILE"
+### create module according to tool version
+sudo sh -c "echo '#%Module1.0'                                                  >> $KLAYOUT_MODULE_FILE"
+sudo sh -c "echo 'setenv KLAYOUT_HOME $KLAYOUT_HOME'                            >> $KLAYOUT_MODULE_FILE"
+sudo sh -c "echo 'prepend-path PATH \$env(KLAYOUT_HOME)/bin'                    >> $KLAYOUT_MODULE_FILE"
+sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(KLAYOUT_HOME)/lib'         >> $KLAYOUT_MODULE_FILE"
 #########################################################################
 #     			  Install Verilator				#
 #########################################################################
-cd ~
-git clone https://github.com/verilator/verilator   # Only first time
-unset VERILATOR_ROOT  # For bash
-cd verilator
-git checkout stable      # Use most recent stable release
+cd ~ ; git clone https://github.com/verilator/verilator ; cd verilator ; unset VERILATOR_ROOT 
 
-VERILATOR_HOME="/opt/tools/verilator"
-autoconf         			  # Create ./configure script
-./configure --prefix $VERILATOR_HOME      # Configure and create Makefile
-make -j `nproc`  			  # Build Verilator itself (if error, try just 'make')
+VERILATOR_VER=$(git describe --tags --abbrev=0)
+VERILATOR_HOME="$INSTALLATION_DIR/verilator/$VERILATOR_VER"                     ; sudo mkdir -p $VERILATOR_HOME
+VERILATOR_MODULE_FILE="$MODULE_FILE_DIR/verilator/$VERILATOR_VER"               ; sudo mkdir -p $MODULE_FILE_DIR/verilator ; sudo touch $VERILATOR_MODULE_FILE
+
+git checkout tags/$VERILATOR_VER
+git submodule update --init --recursive
+
+### Build and Install
+autoconf
+./configure --prefix $VERILATOR_HOME
+make -j `nproc`
 sudo make install
 
-VERILATOR_VER=$(/opt/tools/verilator/bin/verilator -version | awk '{print $2}')
-VERILATOR_MODULE_FILE="/opt/modulefiles/verilator/$VERILATOR_VER"
-
-sudo mkdir -p /opt/modulefiles/verilator
-sudo touch $VERILATOR_MODULE_FILE
-sudo sh -c "echo '#%Module1.0' 							>> $VERILATOR_MODULE_FILE"
-sudo sh -c "echo 'setenv VERILATOR_HOME /opt/tools/verilator' 			>> $VERILATOR_MODULE_FILE"
-sudo sh -c "echo 'prepend-path PATH \$env(VERILATOR_HOME)/bin' 			>> $VERILATOR_MODULE_FILE"
-sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(VERILATOR_HOME)/lib' 	>> $VERILATOR_MODULE_FILE"
+### create module according to tool version
+sudo sh -c "echo '#%Module1.0'                                                  >> $VERILATOR_MODULE_FILE"
+sudo sh -c "echo 'setenv VERILATOR_HOME $VERILATOR_HOME'                        >> $VERILATOR_MODULE_FILE"
+sudo sh -c "echo 'prepend-path PATH \$env(VERILATOR_HOME)/bin'                  >> $VERILATOR_MODULE_FILE"
+sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(VERILATOR_HOME)/lib'       >> $VERILATOR_MODULE_FILE"
 #########################################################################
 #     			  Install cocotb				#
 #########################################################################
