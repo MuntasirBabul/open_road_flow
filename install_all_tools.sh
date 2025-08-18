@@ -54,7 +54,7 @@ sudo sh -c "echo 'setenv OPENROAD_HOME $OPENROAD_HOME'                          
 sudo sh -c "echo 'prepend-path PATH \$env(OPENROAD_HOME)/bin'                   >> $OPENROAD_MODULE_FILE"
 sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(OPENROAD_HOME)/lib'        >> $OPENROAD_MODULE_FILE"
 #########################################################################
-#     			  Install klayout				#
+#                            Install klayout                            #
 #########################################################################
 cd ~ ; git clone https://github.com/KLayout/klayout.git ; cd klayout
 
@@ -76,7 +76,7 @@ sudo sh -c "echo 'setenv KLAYOUT_HOME $KLAYOUT_HOME'                            
 sudo sh -c "echo 'prepend-path PATH \$env(KLAYOUT_HOME)/bin'                    >> $KLAYOUT_MODULE_FILE"
 sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(KLAYOUT_HOME)/lib'         >> $KLAYOUT_MODULE_FILE"
 #########################################################################
-#     			  Install Verilator				#
+#     			  Install Verilator                             #
 #########################################################################
 cd ~ ; git clone https://github.com/verilator/verilator ; cd verilator ; unset VERILATOR_ROOT 
 
@@ -99,7 +99,7 @@ sudo sh -c "echo 'setenv VERILATOR_HOME $VERILATOR_HOME'                        
 sudo sh -c "echo 'prepend-path PATH \$env(VERILATOR_HOME)/bin'                  >> $VERILATOR_MODULE_FILE"
 sudo sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(VERILATOR_HOME)/lib'       >> $VERILATOR_MODULE_FILE"
 #########################################################################
-#     			  Install cocotb				#
+#                           Install cocotb                              #
 #########################################################################
 
 
