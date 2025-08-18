@@ -15,7 +15,9 @@ sudo apt install -y git
 sudo apt install -y clang 
 sudo apt install -y python3 
 sudo apt install -y python3-dev 
-sudo apt install -y python3-pip 
+sudo apt install -y python3-pip
+sudo apt install -y pipx
+sudo apt install -y python3-virtualenv
 sudo apt install -y libpython3-dev 
 sudo apt install -y libffi-dev 
 sudo apt install -y gcc 
