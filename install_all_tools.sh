@@ -2,7 +2,7 @@
 #                   define installation directory                       #
 #########################################################################
 
-ROOT_INSTALLATION="no"
+ROOT_INSTALLATION="yes"
 
 if [ "$ROOT_INSTALLATION" = "yes" ]; then
     ROOT_ARG="sudo "
@@ -41,6 +41,7 @@ $ROOT_ARG sh -c "echo '#%Module1.0'                                        >> $Y
 $ROOT_ARG sh -c "echo 'setenv YOSYS_HOME $YOSYS_HOME'                      >> $YOSYS_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path PATH \$env(YOSYS_HOME)/bin'            >> $YOSYS_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(YOSYS_HOME)/lib' >> $YOSYS_MOD_F"
+$ROOT_ARG sh -c "echo 'module load yosys/$YOSYS_VER'         		   >> env.sh"
 
 ### yosys-slang for system verilog support ###
 cd ~ ; git clone https://github.com/povik/yosys-slang.git ; cd yosys-slang
@@ -49,7 +50,7 @@ git submodule update --init --recursive
 sed -i 's|^CMAKE_FLAGS.\=|CMAKE_FLAGS +=|' Makefile
 
 make -j$(nproc) CMAKE_FLAGS="$(CMAKE_FLAGS) -DYOSYS_CONFIG=$YOSYS_HOME/bin/yosys-config -DCMAKE_CXX_FLAGS=\"-I$YOSYS_HOME/share/yosys/include\" -DYOSYS_CXXFLAGS=\"-I$YOSYS_HOME/share/yosys/include\" .."
-mkdir -p $YOSYS_HOME/share/yosys/plugins && cp -r build/slang.so $YOSYS_HOME/share/yosys/plugins
+$ROOT_ARG mkdir -p $YOSYS_HOME/share/yosys/plugins && $ROOT_ARG cp -r build/slang.so $YOSYS_HOME/share/yosys/plugins
 #########################################################################
 #                            Install OpenROAD                           #
 #########################################################################
@@ -75,6 +76,7 @@ $ROOT_ARG sh -c "echo '#%Module1.0'                                           >>
 $ROOT_ARG sh -c "echo 'setenv OPENROAD_HOME $OPENROAD_HOME'                   >> $OPENROAD_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path PATH \$env(OPENROAD_HOME)/bin'            >> $OPENROAD_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(OPENROAD_HOME)/lib' >> $OPENROAD_MOD_F"
+$ROOT_ARG sh -c "echo 'module load openroad/$OPENROAD_VER'   		      >> env.sh"
 #########################################################################
 #                            Install klayout                            #
 #########################################################################
@@ -97,6 +99,7 @@ $ROOT_ARG sh -c "echo '#%Module1.0'                                          >> 
 $ROOT_ARG sh -c "echo 'setenv KLAYOUT_HOME $KLAYOUT_HOME'                    >> $KLAYOUT_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path PATH \$env(KLAYOUT_HOME)/bin'            >> $KLAYOUT_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(KLAYOUT_HOME)/lib' >> $KLAYOUT_MOD_F"
+$ROOT_ARG sh -c "echo 'module load klayout/$KLAYOUT_VER'     		     >> env.sh"
 #########################################################################
 #                         Install Verilator                             #
 #########################################################################
@@ -121,6 +124,7 @@ $ROOT_ARG sh -c "echo '#%Module1.0'                                            >
 $ROOT_ARG sh -c "echo 'setenv VERILATOR_HOME $VERILATOR_HOME'                  >> $VERILATOR_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path PATH \$env(VERILATOR_HOME)/bin'            >> $VERILATOR_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(VERILATOR_HOME)/lib' >> $VERILATOR_MOD_F"
+$ROOT_ARG sh -c "echo 'module load verilator/$VERILATOR_VER' 		       >> env.sh"
 #########################################################################
 #                           Install cocotb                              #
 #########################################################################
@@ -154,12 +158,4 @@ $ROOT_ARG sh -c "echo 'setenv COCOTB_HOME $COCOTB_HOME'                         
 $ROOT_ARG sh -c "echo 'prepend-path PATH \$envCOCOTB_HOME/venv/bin'                                   >> $COCOTB_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path PYTHONPATH \$env(COCOTB_HOME)/venv/lib/$PYTHON_VER/site-packages' >> $COCOTB_MOD_F"
 $ROOT_ARG sh -c "echo 'conflict cocotb'                                                               >> $COCOTB_MOD_F"
-#########################################################################
-#                   Create Environment file to source                   #
-#########################################################################
-# source the env.sh to load all the modules
-$ROOT_ARG sh -c "echo 'module load verilator/$VERILATOR_VER' >> env.sh"
-$ROOT_ARG sh -c "echo 'module load yosys/$YOSYS_VER'         >> env.sh"
-$ROOT_ARG sh -c "echo 'module load openroad/$OPENROAD_VER'   >> env.sh"
-$ROOT_ARG sh -c "echo 'module load klayout/$KLAYOUT_VER'     >> env.sh"
-$ROOT_ARG sh -c "echo 'module load cocotb/$COCOTB_VER'       >> env.sh"
+$ROOT_ARG sh -c "echo 'module load cocotb/$COCOTB_VER'       					      >> env.sh"
