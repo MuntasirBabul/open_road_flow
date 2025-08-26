@@ -41,6 +41,15 @@ $ROOT_ARG sh -c "echo '#%Module1.0'                                        >> $Y
 $ROOT_ARG sh -c "echo 'setenv YOSYS_HOME $YOSYS_HOME'                      >> $YOSYS_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path PATH \$env(YOSYS_HOME)/bin'            >> $YOSYS_MOD_F"
 $ROOT_ARG sh -c "echo 'prepend-path LD_LIBRARY_PATH \$env(YOSYS_HOME)/lib' >> $YOSYS_MOD_F"
+
+### yosys-slang for system verilog support ###
+cd ~ ; git clone https://github.com/povik/yosys-slang.git ; cd yosys-slang
+git submodule update --init --recursive
+
+sed -i 's|^CMAKE_FLAGS.\=|CMAKE_FLAGS +=|' Makefile
+
+make -j$(nproc) CMAKE_FLAGS="$(CMAKE_FLAGS) -DYOSYS_CONFIG=$YOSYS_HOME/bin/yosys-config -DCMAKE_CXX_FLAGS=\"-I$YOSYS_HOME/share/yosys/include\" -DYOSYS_CXXFLAGS=\"-I$YOSYS_HOME/share/yosys/include\" .."
+mkdir -p $YOSYS_HOME/share/yosys/plugins && cp -r build/slang.so $YOSYS_HOME/share/yosys/plugins
 #########################################################################
 #                            Install OpenROAD                           #
 #########################################################################
