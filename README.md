@@ -1,6 +1,6 @@
 # EDA Tools Setup on Ubuntu / WSL
 
-This repository provides guidance for setting up **open-source EDA tools** such as **Yosys, OpenROAD, KLayout, cocotb, verilator** on Ubuntu or WSL. It focuses on creating a **reproducible environment**, configuring tools with the **module system**, and ensuring smooth workflow for ASIC design and physical design verification.
+This repository provides guidance for setting up **open-source EDA tools** such as **Yosys, OpenROAD, KLayout, cocotb, verilator, ngspice, xschem and OpenVAF** on Ubuntu or WSL. It focuses on creating a **reproducible environment**, configuring tools with the **module system**, and ensuring smooth workflow for digital and analog ASIC design and physical design verification.
 
 
 
@@ -23,7 +23,7 @@ bash install_dependencies.sh
 
 ## Installing Tools
 
-Tools such as **Yosys, OpenROAD, KLayout, cocotb and verilator** should be installed from their official repositories, preferably using the **latest stable tagged release**. Installing in `/opt/tools` helps maintain a consistent location and prevents conflicts with system-installed versions. After installation, each tool should be tested to ensure the binaries are functional and accessible.
+Tools such as **Yosys, OpenROAD, KLayout, cocotb, verilator, ngspice, xschem and OpenVAF** should be installed from their official repositories, preferably using the **latest stable tagged release**. Installing in `/opt/tools` helps maintain a consistent location and prevents conflicts with system-installed versions. After installation, each tool should be tested to ensure the binaries are functional and accessible.
 
 Run the following script to install all tools (run it with `bash`, do not `source` it):
 
@@ -38,12 +38,24 @@ Optional settings, passed as environment variables:
 | `ROOT_INSTALLATION` | `yes` | `yes` installs to `/opt/tools` and `/opt/modulefiles` with sudo; `no` installs to `~/tools` and `~/modulefiles` |
 | `SRC_DIR` | `$HOME` | Where the tool sources are cloned and built |
 | `JOBS` | `nproc` | Parallel build jobs; lower it if the build runs out of memory (common for OpenROAD on WSL) |
+| `INSTALL_YOSYS`, `INSTALL_OPENROAD`, `INSTALL_KLAYOUT`, `INSTALL_VERILATOR`, `INSTALL_COCOTB`, `INSTALL_NGSPICE`, `INSTALL_XSCHEM`, `INSTALL_OPENVAF` | `yes` | Set any of them to `no` to skip that tool |
 
 For example, to install into your home directory with 4 build jobs:
 
 ```bash
 ROOT_INSTALLATION=no JOBS=4 bash install_all_tools.sh
 ```
+
+To install only the analog tools (ngspice, xschem, OpenVAF):
+
+```bash
+INSTALL_YOSYS=no INSTALL_OPENROAD=no INSTALL_KLAYOUT=no INSTALL_VERILATOR=no INSTALL_COCOTB=no bash install_all_tools.sh
+```
+
+Notes on the analog tools:
+
+- **ngspice** is built with X11 plotting, CIDER, XSPICE, OpenMP and OSDI, so it can load Verilog-A models compiled by OpenVAF.
+- **OpenVAF** is built from the maintained [OpenVAF-Reloaded](https://github.com/OpenVAF-Reloaded/OpenVAF) fork. It needs LLVM 18 or newer: `install_dependencies.sh` installs LLVM 18 where Ubuntu provides it (24.04 and later); on older releases install it from [apt.llvm.org](https://apt.llvm.org). Rust is installed for your user with rustup if `cargo` is not found. The binary is called `openvaf-r`; an `openvaf` link is also created.
 
 The script is safe to re-run: it updates existing clones, overwrites modulefiles instead of appending to them, and builds as your user (only the install step uses sudo).
 
@@ -114,5 +126,8 @@ Some common challenges include version mismatches, modulepath misconfigurations,
 - [SkyWater PDK](https://github.com/google/skywater-pdk)
 - [Cocotb GitHub Repository](https://github.com/cocotb/cocotb)  
 - [Verilator Official Website](https://www.veripool.org/verilator)
+- [ngspice Website](https://ngspice.sourceforge.io/)
+- [xschem GitHub Repository](https://github.com/StefanSchippers/xschem)
+- [OpenVAF-Reloaded GitHub Repository](https://github.com/OpenVAF-Reloaded/OpenVAF)
 
 
