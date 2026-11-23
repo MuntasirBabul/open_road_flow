@@ -19,8 +19,8 @@ REQUIRED_PKGS=(
     environment-modules
     # toolchain
     build-essential gcc g++ clang make cmake pkg-config autoconf git perl help2man
-    # yosys
-    tcl tcl-dev libreadline-dev bison flex libffi-dev
+    # yosys (built with CMake 3.28+; Ubuntu 24.04 or newer ships it)
+    tcl tcl-dev libreadline-dev bison flex libffi-dev graphviz xdot
     # python / cocotb
     python3 python3-dev python3-pip python3-venv python3-virtualenv libpython3-dev pipx
     # klayout
@@ -35,6 +35,10 @@ REQUIRED_PKGS=(
     tcl8.6-dev tk8.6-dev libx11-dev libxpm-dev libcairo2-dev libxcb1-dev libx11-xcb-dev gawk
     # openvaf (Rust is installed by install_all_tools.sh through rustup)
     curl libzstd-dev libxml2-dev
+    # icarus verilog (gperf generates its keyword tables when building from git)
+    gperf
+    # magic and netgen (Tcl/Tk 8.6 and Cairo are listed above for xschem)
+    m4 libglu1-mesa-dev libxi-dev
 )
 
 # Nice to have; not available on every Ubuntu release, so failures are only warnings.

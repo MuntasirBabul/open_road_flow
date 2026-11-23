@@ -2,9 +2,11 @@
 #########################################################################
 #  Build and install open-source EDA tools, each with a versioned       #
 #  modulefile:                                                          #
-#    digital: Yosys (+ slang plugin), OpenROAD, KLayout, Verilator,     #
-#             cocotb                                                    #
+#    digital: Yosys (with yosys-slang), OpenROAD, KLayout, Verilator,   #
+#             Icarus Verilog, cocotb                                    #
 #    analog:  ngspice, xschem, OpenVAF                                  #
+#    layout:  Magic, Netgen                                             #
+#    PDK:     ciel + the sky130 PDK                                     #
 #                                                                       #
 #  Run with:  bash install_all_tools.sh                                 #
 #                                                                       #
@@ -34,8 +36,8 @@ SRC_DIR="${SRC_DIR:-$HOME}"
 JOBS="${JOBS:-$(nproc)}"
 
 # Tools, in installation order. Each one can be turned off with INSTALL_<TOOL>=no.
-TOOLS=(yosys openroad klayout verilator cocotb ngspice xschem openvaf)
-INSTALL_YOSYS="${INSTALL_YOSYS:-yes}"          # includes the slang SystemVerilog plugin
+TOOLS=(yosys openroad klayout verilator iverilog cocotb ngspice xschem openvaf magic netgen pdk)
+INSTALL_YOSYS="${INSTALL_YOSYS:-yes}"          # yosys-slang (SystemVerilog) is built in
 INSTALL_OPENROAD="${INSTALL_OPENROAD:-yes}"
 INSTALL_KLAYOUT="${INSTALL_KLAYOUT:-yes}"
 INSTALL_VERILATOR="${INSTALL_VERILATOR:-yes}"
@@ -43,6 +45,20 @@ INSTALL_COCOTB="${INSTALL_COCOTB:-yes}"
 INSTALL_NGSPICE="${INSTALL_NGSPICE:-yes}"
 INSTALL_XSCHEM="${INSTALL_XSCHEM:-yes}"
 INSTALL_OPENVAF="${INSTALL_OPENVAF:-yes}"      # needs LLVM 18+ (see install_dependencies.sh)
+INSTALL_IVERILOG="${INSTALL_IVERILOG:-yes}"    # Icarus Verilog (iverilog, vvp)
+INSTALL_MAGIC="${INSTALL_MAGIC:-yes}"          # layout editor, DRC, extraction
+INSTALL_NETGEN="${INSTALL_NETGEN:-yes}"        # LVS
+INSTALL_PDK="${INSTALL_PDK:-yes}"              # ciel, then enable the sky130 PDK below
+
+# Icarus Verilog: empty builds its newest tag; a commit, tag or branch builds
+# that instead (e.g. IVERILOG_REF=master for the current 14.0 development code).
+IVERILOG_REF="${IVERILOG_REF:-}"
+
+# PDK: ciel version, and the open_pdks commit of sky130 to enable (the one
+# bridge_NVX uses; empty skips the PDK). PDK_ROOT is ciel's default location.
+CIEL_VERSION="${CIEL_VERSION:-3.3.0}"
+SKY130_PDK_HASH="${SKY130_PDK_HASH:-e7a6777d157a9d94c7ac757457b9e4309e9e9000}"
+PDK_ROOT="${PDK_ROOT:-$HOME/.ciel}"
 
 if [[ "$ROOT_INSTALLATION" == "yes" ]]; then
     INSTALLATION_DIR="/opt/tools"
@@ -65,10 +81,60 @@ as_root() {
 
 log() { echo -e "\n===== $* =====\n" >&2; }
 
+# install_from <dir> <command...>
+# Run an install command with as_root, then give <dir> (the source or build
+# folder it ran in) back to the current user. "sudo make install" and
+# "sudo cmake --install" leave root-owned files there (e.g.
+# install_manifest.txt), which would break the next update and rebuild.
+install_from() {
+    local dir=$1
+    shift
+    as_root "$@"
+    if [[ "$ROOT_INSTALLATION" == "yes" ]]; then
+        sudo chown -R "$(id -u):$(id -g)" "$dir"
+    fi
+}
+
+# find_cmake: full path of the cmake to use for one build.
+# OpenROAD's dependency installer adds a second cmake in /usr/local/bin
+# part-way through a run, and sudo searches its own PATH. Looking cmake up
+# once per build and calling it by full path keeps configure, build and the
+# sudo install step on the same cmake.
+find_cmake() {
+    local bin version
+    bin=$(type -P cmake)
+    version=$("$bin" --version)
+    log "Using $bin (${version%%$'\n'*})"
+    echo "$bin"
+}
+
 # True when INSTALL_<TOOL> is "yes".
 want() {
     local var="INSTALL_${1^^}"
     [[ "${!var:-yes}" == "yes" ]]
+}
+
+# update_repo <url> <dir>
+# Clone the repo, or fetch the newest commits and tags if it is already there.
+update_repo() {
+    local url=$1 dir=$2
+    if [[ -d "$dir/.git" ]]; then
+        if [[ -n "$(find "$dir" -user root -print -quit)" ]]; then
+            # Left by an earlier sudo build or install.
+            if [[ "$ROOT_INSTALLATION" == "yes" ]]; then
+                echo "Giving root-owned files in $dir back to $USER" >&2
+                sudo chown -R "$(id -u):$(id -g)" "$dir"
+            else
+                echo "ERROR: $dir contains root-owned files (left by an earlier sudo build)." >&2
+                echo "       Fix with: sudo chown -R $USER: $dir" >&2
+                exit 1
+            fi
+        fi
+        git -C "$dir" fetch --tags --prune origin >&2
+        git -C "$dir" remote set-head origin --auto >&2
+    else
+        git clone "$url" "$dir" >&2
+    fi
 }
 
 # checkout_latest_tag <url> <dir> [branch]
@@ -76,34 +142,122 @@ want() {
 # (default: the repo's default branch) and print that tag.
 checkout_latest_tag() {
     local url=$1 dir=$2 ref="origin/${3:-HEAD}" ver
-    if [[ -d "$dir/.git" ]]; then
-        if [[ -n "$(find "$dir" -user root -print -quit)" ]]; then
-            echo "ERROR: $dir contains root-owned files (left by an earlier sudo build)." >&2
-            echo "       Fix with: sudo chown -R $USER: $dir" >&2
-            exit 1
-        fi
-        git -C "$dir" fetch --tags --prune origin >&2
-        git -C "$dir" remote set-head origin --auto >&2
-    else
-        git clone "$url" "$dir" >&2
-    fi
+    update_repo "$url" "$dir"
     ver=$(git -C "$dir" describe --tags --abbrev=0 "$ref")
     git -C "$dir" checkout --force "tags/$ver" >&2
     git -C "$dir" submodule update --init --recursive >&2
     echo "$ver"
 }
 
+# checkout_ref <url> <dir> <ref>
+# Clone (or update) a repo, check out a branch, tag or commit, and print its
+# "git describe" name (e.g. s20260301-871-g66f0e8a1), used as the version.
+checkout_ref() {
+    local url=$1 dir=$2 ref=$3
+    update_repo "$url" "$dir"
+    # A branch name means the remote branch, not a stale local copy.
+    if git -C "$dir" rev-parse --verify --quiet "origin/$ref^{commit}" > /dev/null; then
+        ref="origin/$ref"
+    fi
+    git -C "$dir" checkout --force --detach "$ref" >&2
+    git -C "$dir" submodule update --init --recursive >&2
+    git -C "$dir" describe --tags
+}
+
+# One-line descriptions, shown by "module whatis" and "module avail -l".
+declare -A TOOL_DESC=(
+    [yosys]="Yosys RTL synthesis with the yosys-slang SystemVerilog frontend"
+    [openroad]="OpenROAD RTL-to-GDS physical design"
+    [klayout]="KLayout layout viewer and editor"
+    [verilator]="Verilator Verilog/SystemVerilog simulator"
+    [cocotb]="cocotb Python testbench framework, in its own Python venv"
+    [ngspice]="ngspice circuit simulator, with OSDI support for OpenVAF models"
+    [xschem]="xschem schematic editor"
+    [openvaf]="OpenVAF-Reloaded Verilog-A compiler producing OSDI models"
+    [iverilog]="Icarus Verilog simulator (iverilog, vvp)"
+    [magic]="Magic VLSI layout editor, DRC and extraction"
+    [netgen]="Netgen LVS (layout vs schematic) netlist comparison"
+    [ciel]="ciel PDK version manager (sky130, gf180mcu)"
+)
+
 # write_modulefile <tool> <version> <HOME_VAR> <home> <modulefile lines...>
-# Overwrites the modulefile, so re-running never duplicates lines.
+# Writes <MODULE_FILE_DIR>/<tool>/<version> and makes it the default, so
+# "module load <tool>" loads the version installed last. Overwrites the
+# files, so re-running never duplicates lines.
 write_modulefile() {
     local tool=$1 ver=$2 var=$3 home=$4
     shift 4
     as_root mkdir -p "$MODULE_FILE_DIR/$tool"
     {
         echo '#%Module1.0'
+        echo "module-whatis \"${TOOL_DESC[$tool]} ($ver)\""
+        # Only one version of a tool can be loaded at a time.
+        echo "conflict $tool"
         echo "setenv $var $home"
         printf '%s\n' "$@"
     } | as_root tee "$MODULE_FILE_DIR/$tool/$ver" > /dev/null
+    printf '%s\n' '#%Module1.0' "set ModulesVersion \"$ver\"" \
+        | as_root tee "$MODULE_FILE_DIR/$tool/.version" > /dev/null
+}
+
+#########################################################################
+#              make "module load <tool>" work in every shell            #
+#########################################################################
+# Ubuntu only defines the module command in login shells (/etc/profile.d).
+# These settings add the modulefiles to MODULEPATH and define the module
+# command in non-login interactive shells too (new terminal tabs, VS Code,
+# tmux). Paths are variables so the setup can be tested on scratch files.
+MODULES_INIT="/usr/share/modules/init/bash"
+SYS_MODULESPATH="/etc/environment-modules/modulespath"
+SYS_BASHRC="/etc/bash.bashrc"
+PROFILE_D="/etc/profile.d"
+USER_BASHRC="$HOME/.bashrc"
+BLOCK_START="# >>> eda-tools modules >>>"
+BLOCK_END="# <<< eda-tools modules <<<"
+
+# write_block <file> <text>
+# Put <text> between the eda-tools markers at the end of <file>, replacing an
+# existing block, so re-running never duplicates it. Uses sudo when needed.
+write_block() {
+    local file=$1 text=$2 run=()
+    if [[ ! -w "$file" ]] && ! [[ ! -e "$file" && -w "$(dirname "$file")" ]]; then
+        run=(sudo)
+    fi
+    "${run[@]}" touch "$file"
+    "${run[@]}" sed -i --follow-symlinks "/^$BLOCK_START\$/,/^$BLOCK_END\$/d" "$file"
+    printf '%s\n' "$BLOCK_START" "$text" "$BLOCK_END" | "${run[@]}" tee -a "$file" > /dev/null
+}
+
+setup_modulepath() {
+    local init_module
+    init_module="if ! type module > /dev/null 2>&1 && [ -f $MODULES_INIT ]; then
+    . $MODULES_INIT
+fi"
+
+    if [[ "$ROOT_INSTALLATION" == "yes" ]]; then
+        # environment-modules reads its default MODULEPATH from this file, in
+        # login and non-login shells alike, for every user.
+        if ! grep -qxF "$MODULE_FILE_DIR" "$SYS_MODULESPATH" 2> /dev/null; then
+            echo "$MODULE_FILE_DIR" | sudo tee -a "$SYS_MODULESPATH" > /dev/null
+        fi
+        write_block "$SYS_BASHRC" "$init_module"
+    else
+        write_block "$USER_BASHRC" "$init_module
+type module > /dev/null 2>&1 && module use $MODULE_FILE_DIR"
+    fi
+
+    # Remove what earlier versions of this script set up instead (only
+    # touching files that need it, so a non-root install never needs sudo).
+    local old_line="module use $MODULE_FILE_DIR"
+    if [[ -e "$PROFILE_D/zz-eda-modules.sh" ]]; then
+        sudo rm -f "$PROFILE_D/zz-eda-modules.sh"
+    fi
+    if grep -qxF "$old_line" "$PROFILE_D/modules.sh" 2> /dev/null; then
+        sudo sed -i --follow-symlinks "\|^$old_line\$|d" "$PROFILE_D/modules.sh"
+    fi
+    if grep -qxF "$old_line" "$USER_BASHRC" 2> /dev/null; then
+        sed -i --follow-symlinks "\|^$old_line\$|d" "$USER_BASHRC"
+    fi
 }
 
 # Record "module load <tool>/<ver>" in the central env.sh, replacing any
@@ -118,53 +272,44 @@ register_env() {
 #########################################################################
 #                            Install yosys                              #
 #########################################################################
+# Yosys builds with CMake (3.28+). SystemVerilog support through yosys-slang
+# (sv-elab + slang) is built in: both come as git submodules pinned to the
+# Yosys release, so no separate plugin build is needed. Use it with:
+#   yosys -p "read_slang top.sv --top top; synth -top top"
 install_yosys() {
-    local src="$SRC_DIR/yosys" ver home
+    local src="$SRC_DIR/yosys" ver home build cmake_bin
     ver=$(checkout_latest_tag https://github.com/YosysHQ/yosys.git "$src")
     home="$INSTALLATION_DIR/yosys/$ver"
+    build="$src/build_$ver"
 
     ### Build and Install
-    # PREFIX is passed to the build as well as the install, so yosys-config
-    # reports the real install paths (needed by the slang plugin build).
-    make -C "$src" -j"$JOBS" PREFIX="$home"
-    as_root make -C "$src" install PREFIX="$home"
+    # Bundled third-party libraries (fmt, tomlplusplus, boost regex) keep the
+    # build independent of whatever versions the system happens to have.
+    cmake_bin=$(find_cmake)
+    "$cmake_bin" -S "$src" -B "$build" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="$home" \
+        -DYOSYS_USE_BUNDLED_LIBS=ON \
+        -DYOSYS_ENABLE_UNIT_TESTS=OFF
+    "$cmake_bin" --build "$build" -j"$JOBS"
+    install_from "$build" "$cmake_bin" --install "$build"
+
+    # Check that the built-in slang frontend is there.
+    if ! "$home/bin/yosys" -q -p "help read_slang" > /dev/null; then
+        echo "ERROR: Yosys $ver was installed without the read_slang command." >&2
+        exit 1
+    fi
 
     write_modulefile yosys "$ver" YOSYS_HOME "$home" \
-        'prepend-path PATH $env(YOSYS_HOME)/bin' \
-        'prepend-path LD_LIBRARY_PATH $env(YOSYS_HOME)/lib'
+        'prepend-path PATH $env(YOSYS_HOME)/bin'
     register_env yosys "$ver"
-
-    log "Yosys slang plugin"
-    if ! build_slang "$home"; then
-        echo "WARNING: slang plugin build failed; Yosys is installed without it." >&2
-    fi
-}
-
-### slang plugin (SystemVerilog support), formerly yosys-slang, now sv-elab ###
-# Optional: if it fails (e.g. this Yosys version is not supported by the
-# plugin), the rest of the installation still continues.
-build_slang() {
-    local yosys_home=$1 src="$SRC_DIR/sv-elab"
-    if [[ -d "$src/.git" ]]; then
-        git -C "$src" pull --ff-only >&2 || return 1
-    else
-        git clone https://github.com/povik/sv-elab.git "$src" >&2 || return 1
-    fi
-    git -C "$src" submodule update --init --recursive >&2 || return 1
-    # Put the new Yosys first in PATH so its yosys-config is the one found.
-    PATH="$yosys_home/bin:$PATH" cmake -S "$src" -B "$src/build" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DYOSYS_CONFIG="$yosys_home/bin/yosys-config" || return 1
-    PATH="$yosys_home/bin:$PATH" cmake --build "$src/build" -j"$JOBS" || return 1
-    as_root mkdir -p "$yosys_home/share/yosys/plugins" || return 1
-    as_root cp "$src/build/slang.so" "$yosys_home/share/yosys/plugins/" || return 1
 }
 
 #########################################################################
 #                            Install OpenROAD                           #
 #########################################################################
 install_openroad() {
-    local src="$SRC_DIR/OpenROAD" ver home build
+    local src="$SRC_DIR/OpenROAD" ver home build cmake_bin
     ver=$(checkout_latest_tag https://github.com/The-OpenROAD-Project/OpenROAD.git "$src")
     home="$INSTALLATION_DIR/openroad/$ver"
     build="$src/build_$ver"
@@ -172,9 +317,14 @@ install_openroad() {
     ### Build and Install
     # The dependency installer installs system packages, so it always needs sudo.
     (cd "$src" && sudo ./etc/DependencyInstaller.sh -all)
-    cmake -S "$src" -B "$build" -DCMAKE_INSTALL_PREFIX="$home"
-    cmake --build "$build" -j"$JOBS"
-    as_root cmake --install "$build"
+    sudo chown -R "$(id -u):$(id -g)" "$src"
+
+    # Look cmake up only now: the dependency installer may just have added
+    # its own cmake in /usr/local/bin, which its libraries were built with.
+    cmake_bin=$(find_cmake)
+    "$cmake_bin" -S "$src" -B "$build" -DCMAKE_INSTALL_PREFIX="$home"
+    "$cmake_bin" --build "$build" -j"$JOBS"
+    install_from "$build" "$cmake_bin" --install "$build"
 
     write_modulefile openroad "$ver" OPENROAD_HOME "$home" \
         'prepend-path PATH $env(OPENROAD_HOME)/bin' \
@@ -223,12 +373,39 @@ install_verilator() {
         ./configure --prefix "$home"
         make -j"$JOBS"
     )
-    as_root make -C "$src" install
+    install_from "$src" make -C "$src" install
 
     write_modulefile verilator "$ver" VERILATOR_HOME "$home" \
         'prepend-path PATH $env(VERILATOR_HOME)/bin' \
         'prepend-path LD_LIBRARY_PATH $env(VERILATOR_HOME)/lib'
     register_env verilator "$ver"
+}
+
+#########################################################################
+#                       Install Icarus Verilog                          #
+#########################################################################
+install_iverilog() {
+    local src="$SRC_DIR/iverilog" url=https://github.com/steveicarus/iverilog.git ver home
+    if [[ -n "$IVERILOG_REF" ]]; then
+        ver=$(checkout_ref "$url" "$src" "$IVERILOG_REF")
+    else
+        ver=$(checkout_latest_tag "$url" "$src")
+    fi
+    home="$INSTALLATION_DIR/iverilog/$ver"
+
+    ### Build and Install
+    # Building from git needs autoconf and gperf (install_dependencies.sh).
+    (
+        cd "$src"
+        sh autoconf.sh
+        ./configure --prefix="$home"
+        make -j"$JOBS"
+    )
+    install_from "$src" make -C "$src" install
+
+    write_modulefile iverilog "$ver" IVERILOG_HOME "$home" \
+        'prepend-path PATH $env(IVERILOG_HOME)/bin'
+    register_env iverilog "$ver"
 }
 
 #########################################################################
@@ -255,8 +432,7 @@ install_cocotb() {
     # The venv's bin/ (python3, pip, cocotb-config, pytest) goes first in PATH;
     # its python finds the venv's site-packages by itself, so no PYTHONPATH.
     write_modulefile cocotb "$ver" COCOTB_HOME "$home" \
-        'prepend-path PATH $env(COCOTB_HOME)/venv/bin' \
-        'conflict cocotb'
+        'prepend-path PATH $env(COCOTB_HOME)/venv/bin'
     register_env cocotb "$ver"
 }
 
@@ -282,7 +458,7 @@ install_ngspice() {
         "$src/configure" --prefix="$home" --with-x --enable-cider --disable-debug
         make -j"$JOBS"
     )
-    as_root make -C "$build" install
+    install_from "$build" make -C "$build" install
 
     write_modulefile ngspice "$ver" NGSPICE_HOME "$home" \
         'prepend-path PATH $env(NGSPICE_HOME)/bin' \
@@ -304,7 +480,7 @@ install_xschem() {
         ./configure --prefix="$home"
         make -j"$JOBS"
     )
-    as_root make -C "$src" install
+    install_from "$src" make -C "$src" install
 
     write_modulefile xschem "$ver" XSCHEM_HOME "$home" \
         'prepend-path PATH $env(XSCHEM_HOME)/bin'
@@ -388,24 +564,94 @@ install_openvaf() {
 }
 
 #########################################################################
+#                            Install Magic                              #
+#########################################################################
+# Tcl/Tk 8.6 is given explicitly, so a Tcl 9 installed alongside is not
+# picked up (Magic and Netgen are Tcl 8 applications).
+TCL_CONFIG_DIR="/usr/lib/tcl8.6"
+TK_CONFIG_DIR="/usr/lib/tk8.6"
+
+install_magic() {
+    local src="$SRC_DIR/magic" ver home
+    ver=$(checkout_latest_tag https://github.com/RTimothyEdwards/magic.git "$src")
+    home="$INSTALLATION_DIR/magic/$ver"
+
+    ### Build and Install
+    (
+        cd "$src"
+        ./configure --prefix="$home" --with-tcl="$TCL_CONFIG_DIR" --with-tk="$TK_CONFIG_DIR"
+        make -j"$JOBS"
+    )
+    install_from "$src" make -C "$src" install
+
+    write_modulefile magic "$ver" MAGIC_HOME "$home" \
+        'prepend-path PATH $env(MAGIC_HOME)/bin'
+    register_env magic "$ver"
+}
+
+#########################################################################
+#                            Install Netgen                             #
+#########################################################################
+install_netgen() {
+    local src="$SRC_DIR/netgen" ver home
+    # Netgen tags its releases on the netgen-1.5 branch, not on master.
+    ver=$(checkout_latest_tag https://github.com/RTimothyEdwards/netgen.git "$src" netgen-1.5)
+    home="$INSTALLATION_DIR/netgen/$ver"
+
+    ### Build and Install
+    # -std=gnu17: GCC 15 defaults to C23, where Netgen's old-style function
+    # pointers (int (*f)()) no longer compile.
+    (
+        cd "$src"
+        ./configure --prefix="$home" --with-tcl="$TCL_CONFIG_DIR" --with-tk="$TK_CONFIG_DIR" \
+            CFLAGS="-g -O2 -std=gnu17"
+        make -j"$JOBS"
+    )
+    install_from "$src" make -C "$src" install
+
+    write_modulefile netgen "$ver" NETGEN_HOME "$home" \
+        'prepend-path PATH $env(NETGEN_HOME)/bin'
+    register_env netgen "$ver"
+}
+
+#########################################################################
+#                   Install ciel and the sky130 PDK                     #
+#########################################################################
+# ciel downloads prebuilt open_pdks releases into PDK_ROOT (default ~/.ciel)
+# and switches between them. The PDK itself goes into the user's PDK_ROOT,
+# not into $INSTALLATION_DIR.
+install_pdk() {
+    local ver="$CIEL_VERSION" home
+    home="$INSTALLATION_DIR/ciel/$ver"
+
+    # ciel lives in its own venv; only the ciel command is put on PATH (not
+    # the venv's python3/pip), so loading the module leaves python3 alone.
+    as_root mkdir -p "$home/bin"
+    as_root python3 -m venv "$home/venv"
+    as_root "$home/venv/bin/pip" install --upgrade pip
+    as_root "$home/venv/bin/pip" install "ciel==$ver"
+    as_root ln -sf ../venv/bin/ciel "$home/bin/ciel"
+
+    write_modulefile ciel "$ver" CIEL_HOME "$home" \
+        'prepend-path PATH $env(CIEL_HOME)/bin'
+    register_env ciel "$ver"
+
+    if [[ -n "$SKY130_PDK_HASH" ]]; then
+        # As the current user: downloads this version unless it is already
+        # there, and makes it the active sky130A/sky130B in PDK_ROOT.
+        log "sky130 PDK $SKY130_PDK_HASH in $PDK_ROOT"
+        "$home/bin/ciel" enable --pdk-family sky130 --pdk-root "$PDK_ROOT" "$SKY130_PDK_HASH"
+    fi
+}
+
+#########################################################################
 #                       directories and MODULEPATH                      #
 #########################################################################
 
 as_root mkdir -p "$INSTALLATION_DIR" "$MODULE_FILE_DIR"
 mkdir -p "$SRC_DIR"
 
-MODULE_USE_LINE="module use $MODULE_FILE_DIR"
-if [[ "$ROOT_INSTALLATION" == "yes" ]]; then
-    # Own file instead of appending to the package-owned modules.sh. The "zz-"
-    # prefix makes it run after modules.sh, which defines the module command.
-    echo "$MODULE_USE_LINE" | sudo tee /etc/profile.d/zz-eda-modules.sh > /dev/null
-    # Remove the lines that earlier versions of this script appended to modules.sh.
-    if [[ -e /etc/profile.d/modules.sh ]]; then
-        sudo sed -i --follow-symlinks "\|^$MODULE_USE_LINE\$|d" /etc/profile.d/modules.sh
-    fi
-else
-    grep -qxF "$MODULE_USE_LINE" ~/.bashrc 2> /dev/null || echo "$MODULE_USE_LINE" >> ~/.bashrc
-fi
+setup_modulepath
 
 #########################################################################
 #                               install                                 #
