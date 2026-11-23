@@ -35,6 +35,8 @@ Tools such as **Yosys, OpenROAD, KLayout, Verilator, Icarus Verilog, cocotb, ngs
 
 Run the following script to install all tools (run it with `bash`, do not `source` it):
 
+Run in a terminal, it first lists the tools and asks which to install (numbers separated by spaces, or `a` for all). To skip the question, choose tools with the `INSTALL_<TOOL>` variables below, or set `TOOL_MENU=no` to install everything.
+
 ```bash
 bash install_all_tools.sh
 ```
@@ -48,6 +50,7 @@ Optional settings, passed as environment variables:
 | `JOBS` | `nproc` | Parallel build jobs; lower it if the build runs out of memory (common for OpenROAD on WSL) |
 | `INSTALL_YOSYS`, `INSTALL_OPENROAD`, `INSTALL_KLAYOUT`, `INSTALL_VERILATOR`, `INSTALL_IVERILOG`, `INSTALL_COCOTB`, `INSTALL_NGSPICE`, `INSTALL_XSCHEM`, `INSTALL_OPENVAF`, `INSTALL_MAGIC`, `INSTALL_NETGEN`, `INSTALL_PDK` | `yes` | Set any of them to `no` to skip that tool |
 | `INSTALL_DEPS` | `yes` | `yes` installs the missing Ubuntu packages of the chosen tools first (sudo), then builds; `only` installs them and exits; `check` lists what is missing and exits (no sudo); `no` never calls apt and stops if a required package is missing |
+| `TOOL_MENU` | `auto` | `auto` shows a numbered menu of tools (pick numbers, or `a` for all) when the script runs in a terminal and no `INSTALL_<TOOL>` variable is given; `yes` always asks; `no` never asks |
 | `IVERILOG_REF` | empty | Empty builds the newest Icarus Verilog tag; a commit, tag or branch (e.g. `master`) builds that instead |
 | `CIEL_VERSION` | `3.3.0` | ciel version to install |
 | `SKY130_PDK_HASH` | `e7a6777d157a9d94c7ac757457b9e4309e9e9000` | open_pdks commit of the sky130 PDK that ciel enables (the one bridge_NVX uses); empty skips the PDK |

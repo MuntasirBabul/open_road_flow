@@ -17,6 +17,9 @@
 #                              lower it if WSL runs out of memory       #
 #    INSTALL_<TOOL>=yes|no     pick tools (all default to yes), e.g.    #
 #                              INSTALL_OPENROAD=no INSTALL_XSCHEM=no    #
+#    TOOL_MENU=auto|yes|no     ask which tools to install; auto (the    #
+#                              default) asks only in a terminal when    #
+#                              no INSTALL_<TOOL> variable is given      #
 #    INSTALL_DEPS=yes          first install the missing apt packages   #
 #                              of the chosen tools (sudo), then build   #
 #                 =only        install those packages and exit          #
@@ -42,6 +45,16 @@ JOBS="${JOBS:-$(nproc)}"
 
 # Tools, in installation order. Each one can be turned off with INSTALL_<TOOL>=no.
 TOOLS=(yosys openroad klayout verilator iverilog cocotb ngspice xschem openvaf magic netgen pdk)
+
+# Interactive tool menu (see choose_tools). Note, before the defaults below
+# are applied, whether the caller picked tools with INSTALL_<TOOL> variables.
+TOOL_MENU="${TOOL_MENU:-auto}"
+TOOLS_FROM_ENV=no
+for _t in "${TOOLS[@]}"; do
+    _v="INSTALL_${_t^^}"
+    if [[ -n "${!_v+set}" ]]; then TOOLS_FROM_ENV=yes; fi
+done
+unset _t _v
 INSTALL_YOSYS="${INSTALL_YOSYS:-yes}"          # yosys-slang (SystemVerilog) is built in
 INSTALL_OPENROAD="${INSTALL_OPENROAD:-yes}"
 INSTALL_KLAYOUT="${INSTALL_KLAYOUT:-yes}"
@@ -656,6 +669,68 @@ install_pdk() {
 }
 
 #########################################################################
+#                       select tools to install                         #
+#########################################################################
+# choose_tools: list the tools, read the numbers to install (or "a" for
+# all) and set every INSTALL_<TOOL> to yes or no accordingly.
+choose_tools() {
+    local i t key answer ok picked=()
+    echo "Select the tools to install:" >&2
+    for i in "${!TOOLS[@]}"; do
+        t=${TOOLS[$i]}
+        if [[ "$t" == "pdk" ]]; then
+            key="ciel PDK manager, then enables the sky130 PDK (SKY130_PDK_HASH)"
+        else
+            key=${TOOL_DESC[$t]}
+        fi
+        printf '  %2d) %-9s %s\n' $((i + 1)) "$t" "$key" >&2
+    done
+    echo "   a) all tools" >&2
+    while true; do
+        if ! read -r -p "Enter numbers separated by spaces (e.g. 1 3 6) or 'a' for all: " answer; then
+            echo "No answer (end of input); nothing installed." >&2
+            exit 1
+        fi
+        answer=${answer//,/ }
+        [[ -z "${answer// /}" ]] && continue
+        ok=yes
+        picked=()
+        for t in $answer; do
+            if [[ "$t" == "a" || "$t" == "all" ]]; then
+                picked=("${!TOOLS[@]}")
+                break
+            elif [[ "$t" =~ ^[0-9]+$ ]] && (( t >= 1 && t <= ${#TOOLS[@]} )); then
+                picked+=($((t - 1)))
+            else
+                echo "Unknown choice '$t': use numbers 1-${#TOOLS[@]} or 'a'." >&2
+                ok=no
+            fi
+        done
+        [[ "$ok" == "yes" ]] && break
+    done
+    for t in "${TOOLS[@]}"; do
+        printf -v "INSTALL_${t^^}" '%s' no
+    done
+    for i in "${picked[@]}"; do
+        printf -v "INSTALL_${TOOLS[$i]^^}" '%s' yes
+    done
+}
+
+case "$TOOL_MENU" in
+    yes) choose_tools ;;
+    auto) if [[ -t 0 && "$TOOLS_FROM_ENV" == "no" ]]; then choose_tools; fi ;;
+    no) ;;
+    *) echo "ERROR: TOOL_MENU must be auto, yes or no (got '$TOOL_MENU')" >&2; exit 1 ;;
+esac
+
+_chosen=()
+for _t in "${TOOLS[@]}"; do
+    if want "$_t"; then _chosen+=("$_t"); fi
+done
+log "Tools to install: ${_chosen[*]:-none}"
+unset _t _chosen
+
+#########################################################################
 #                     Ubuntu packages, per tool                         #
 #########################################################################
 # Each tool lists the packages its build needs; COMMON_PKGS are needed by
@@ -687,6 +762,8 @@ declare -A TOOL_OPT_PKGS=(
     # ccache/mold: if present at Verilator build time they are needed at run time
     [verilator]="libfl2 ccache mold libgoogle-perftools-dev numactl"
     [ngspice]="libsndfile1-dev libsamplerate0-dev"       # wav file support
+    # xterm: xschem runs simulations in an xterm; libjpeg-dev: image support
+    [xschem]="xterm libjpeg-dev"
     # OpenVAF needs LLVM 18+ (Ubuntu 24.04+); older releases: https://apt.llvm.org
     [openvaf]="llvm-18 llvm-18-dev libclang-18-dev clang-18"
 )
