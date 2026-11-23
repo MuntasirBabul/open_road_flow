@@ -12,9 +12,17 @@ The setup allows users to install EDA tools in a centralized location, typically
 
 ## Prerequisites
 
-Before installing tools, ensure your system has **basic development libraries** and dependencies installed. A working Ubuntu or WSL environment is required, with sufficient CPU, memory, and optional GPU support for GUI-enabled tools. Python3 and standard development packages are also recommended for scripting and flow automation.
+A working Ubuntu or WSL environment is required, with sufficient CPU, memory, and optional GPU support for GUI-enabled tools, and a user that can run `sudo`.
 
-Before proceeding, run the following script to install all required Ubuntu dependencies:
+**The Ubuntu packages are installed by `install_all_tools.sh` itself**, as its first step: every tool lists the packages its build needs (`TOOL_PKGS` in the script), and the script installs the missing ones for the tools you chose, in one `sudo apt-get` call, before any build starts. A missing package therefore stops the run in the first minute, and sudo asks for its password once, at the start. There is no separate step to remember.
+
+To check without installing anything (no sudo):
+
+```bash
+INSTALL_DEPS=check bash install_all_tools.sh
+```
+
+`install_dependencies.sh` is optional: it installs the packages of every tool (or of the tools left at `INSTALL_<TOOL>=yes`) without building anything, e.g. to prepare a machine in advance:
 
 ```bash
 bash install_dependencies.sh
@@ -39,6 +47,7 @@ Optional settings, passed as environment variables:
 | `SRC_DIR` | `$HOME` | Where the tool sources are cloned and built |
 | `JOBS` | `nproc` | Parallel build jobs; lower it if the build runs out of memory (common for OpenROAD on WSL) |
 | `INSTALL_YOSYS`, `INSTALL_OPENROAD`, `INSTALL_KLAYOUT`, `INSTALL_VERILATOR`, `INSTALL_IVERILOG`, `INSTALL_COCOTB`, `INSTALL_NGSPICE`, `INSTALL_XSCHEM`, `INSTALL_OPENVAF`, `INSTALL_MAGIC`, `INSTALL_NETGEN`, `INSTALL_PDK` | `yes` | Set any of them to `no` to skip that tool |
+| `INSTALL_DEPS` | `yes` | `yes` installs the missing Ubuntu packages of the chosen tools first (sudo), then builds; `only` installs them and exits; `check` lists what is missing and exits (no sudo); `no` never calls apt and stops if a required package is missing |
 | `IVERILOG_REF` | empty | Empty builds the newest Icarus Verilog tag; a commit, tag or branch (e.g. `master`) builds that instead |
 | `CIEL_VERSION` | `3.3.0` | ciel version to install |
 | `SKY130_PDK_HASH` | `e7a6777d157a9d94c7ac757457b9e4309e9e9000` | open_pdks commit of the sky130 PDK that ciel enables (the one bridge_NVX uses); empty skips the PDK |
@@ -64,11 +73,11 @@ Notes on Yosys:
 Notes on the analog tools:
 
 - **ngspice** is built with X11 plotting, CIDER, XSPICE, OpenMP and OSDI, so it can load Verilog-A models compiled by OpenVAF.
-- **OpenVAF** is built from the maintained [OpenVAF-Reloaded](https://github.com/OpenVAF-Reloaded/OpenVAF) fork. It needs LLVM 18 or newer: `install_dependencies.sh` installs LLVM 18 where Ubuntu provides it (24.04 and later); on older releases install it from [apt.llvm.org](https://apt.llvm.org). Rust is installed for your user with rustup if `cargo` is not found. The binary is called `openvaf-r`; an `openvaf` link is also created.
+- **OpenVAF** is built from the maintained [OpenVAF-Reloaded](https://github.com/OpenVAF-Reloaded/OpenVAF) fork. It needs LLVM 18 or newer: the script installs LLVM 18 (optional packages of OpenVAF) where Ubuntu provides it (24.04 and later); on older releases install it from [apt.llvm.org](https://apt.llvm.org). Rust is installed for your user with rustup if `cargo` is not found. The binary is called `openvaf-r`; an `openvaf` link is also created.
 
 Notes on layout, verification and the PDK:
 
-- **Icarus Verilog** (`iverilog`, `vvp`) is built from git, which needs `gperf` and `autoconf` (installed by `install_dependencies.sh`).
+- **Icarus Verilog** (`iverilog`, `vvp`) is built from git, which needs `gperf` and `autoconf` (installed automatically as its packages).
 - **Magic** and **Netgen** are built against Tcl/Tk 8.6. Netgen's releases are tagged on its `netgen-1.5` branch, which the script uses.
 - **ciel** is installed in its own Python venv; its module only adds the `ciel` command to `PATH`. The script then runs `ciel enable --pdk-family sky130 <SKY130_PDK_HASH>`, which downloads that PDK version into `PDK_ROOT` if it is not there yet and makes it the active `sky130A`/`sky130B`. The PDK is per user (`~/.ciel`), not in `/opt/tools`.
 

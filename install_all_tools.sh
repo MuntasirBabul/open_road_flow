@@ -17,6 +17,11 @@
 #                              lower it if WSL runs out of memory       #
 #    INSTALL_<TOOL>=yes|no     pick tools (all default to yes), e.g.    #
 #                              INSTALL_OPENROAD=no INSTALL_XSCHEM=no    #
+#    INSTALL_DEPS=yes          first install the missing apt packages   #
+#                              of the chosen tools (sudo), then build   #
+#                 =only        install those packages and exit          #
+#                 =check       list missing packages and exit (no sudo) #
+#                 =no          never call apt; stop if any is missing   #
 #########################################################################
 
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
@@ -49,6 +54,12 @@ INSTALL_IVERILOG="${INSTALL_IVERILOG:-yes}"    # Icarus Verilog (iverilog, vvp)
 INSTALL_MAGIC="${INSTALL_MAGIC:-yes}"          # layout editor, DRC, extraction
 INSTALL_NETGEN="${INSTALL_NETGEN:-yes}"        # LVS
 INSTALL_PDK="${INSTALL_PDK:-yes}"              # ciel, then enable the sky130 PDK below
+
+# Ubuntu packages: "yes" installs the ones the chosen tools need and are
+# missing (one sudo apt-get call, before any build starts); "only" does just
+# that and exits; "check" lists what is missing and exits; "no" never calls
+# apt and stops if a required package is missing.
+INSTALL_DEPS="${INSTALL_DEPS:-yes}"
 
 # Icarus Verilog: empty builds its newest tag; a commit, tag or branch builds
 # that instead (e.g. IVERILOG_REF=master for the current 14.0 development code).
@@ -643,6 +654,103 @@ install_pdk() {
         "$home/bin/ciel" enable --pdk-family sky130 --pdk-root "$PDK_ROOT" "$SKY130_PDK_HASH"
     fi
 }
+
+#########################################################################
+#                     Ubuntu packages, per tool                         #
+#########################################################################
+# Each tool lists the packages its build needs; COMMON_PKGS are needed by
+# all of them. Only the tools being installed are looked at, and only their
+# missing packages are installed, in one apt-get call before any build
+# starts: a missing package (e.g. gperf for Icarus Verilog) then stops the
+# run in the first minute instead of after an hour of building, and sudo
+# asks for its password once, up front.
+COMMON_PKGS=(environment-modules build-essential gcc g++ make cmake pkg-config
+             autoconf automake git perl curl python3)
+
+declare -A TOOL_PKGS=(
+    [yosys]="tcl tcl-dev libreadline-dev bison flex libffi-dev zlib1g-dev graphviz xdot python3-dev"
+    [openroad]=""    # its own etc/DependencyInstaller.sh installs what it needs
+    [klayout]="qtbase5-dev qttools5-dev libqt5xmlpatterns5-dev qtmultimedia5-dev libqt5multimediawidgets5 libqt5svg5-dev ruby ruby-dev zlib1g-dev libgit2-dev python3-dev"
+    [verilator]="help2man bison flex libfl-dev"
+    [iverilog]="gperf bison flex"     # gperf builds its keyword tables from git
+    [cocotb]="python3-dev python3-pip python3-venv python3-virtualenv libpython3-dev pipx"
+    [ngspice]="libtool bison flex libreadline-dev libxaw7-dev libxmu-dev libxext-dev libxft-dev libfontconfig1-dev libxrender-dev libfreetype-dev libfftw3-dev"
+    [xschem]="tcl8.6-dev tk8.6-dev libx11-dev libxpm-dev libcairo2-dev libxcb1-dev libx11-xcb-dev gawk bison flex"
+    [openvaf]="libzstd-dev libxml2-dev"     # Rust comes from rustup (install_openvaf)
+    [magic]="m4 tcl8.6-dev tk8.6-dev libx11-dev libcairo2-dev libglu1-mesa-dev libxi-dev"
+    [netgen]="tcl8.6-dev tk8.6-dev libx11-dev"
+    [pdk]="python3-venv python3-pip"
+)
+
+# Nice to have, or not available on every Ubuntu release: a failure is a warning.
+declare -A TOOL_OPT_PKGS=(
+    # ccache/mold: if present at Verilator build time they are needed at run time
+    [verilator]="libfl2 ccache mold libgoogle-perftools-dev numactl"
+    [ngspice]="libsndfile1-dev libsamplerate0-dev"       # wav file support
+    # OpenVAF needs LLVM 18+ (Ubuntu 24.04+); older releases: https://apt.llvm.org
+    [openvaf]="llvm-18 llvm-18-dev libclang-18-dev clang-18"
+)
+
+pkg_installed() {
+    [[ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2> /dev/null)" == "installed" ]]
+}
+
+# missing_pkgs <package...>: print the ones that are not installed, sorted, once each.
+missing_pkgs() {
+    local p
+    for p in $(printf '%s\n' "$@" | sort -u); do
+        pkg_installed "$p" || echo "$p"
+    done
+}
+
+install_deps() {
+    local req=("${COMMON_PKGS[@]}") opt=() t p list missing_req missing_opt
+    for t in "${TOOLS[@]}"; do
+        want "$t" || continue
+        read -ra list <<< "${TOOL_PKGS[$t]:-}"
+        req+=("${list[@]}")
+        read -ra list <<< "${TOOL_OPT_PKGS[$t]:-}"
+        opt+=("${list[@]}")
+    done
+    mapfile -t missing_req < <(missing_pkgs "${req[@]}")
+    mapfile -t missing_opt < <(missing_pkgs "${opt[@]}")
+
+    if (( ${#missing_req[@]} == 0 && ${#missing_opt[@]} == 0 )); then
+        log "Ubuntu packages: everything the chosen tools need is installed"
+        return 0
+    fi
+    log "Ubuntu packages missing: required: ${missing_req[*]:-none}; optional: ${missing_opt[*]:-none}"
+
+    if [[ "$INSTALL_DEPS" == "check" ]]; then
+        (( ${#missing_req[@]} == 0 ))
+        return
+    fi
+    if [[ "$INSTALL_DEPS" == "no" ]]; then
+        if (( ${#missing_req[@]} )); then
+            echo "ERROR: required packages are missing. Install them with" >&2
+            echo "       sudo apt-get install -y ${missing_req[*]}" >&2
+            echo "       or rerun with INSTALL_DEPS=yes." >&2
+            exit 1
+        fi
+        return 0
+    fi
+
+    sudo apt-get update
+    if (( ${#missing_req[@]} )); then
+        sudo apt-get install -y "${missing_req[@]}"
+    fi
+    for p in "${missing_opt[@]}"; do
+        sudo apt-get install -y "$p" \
+            || echo "WARNING: optional package '$p' could not be installed; continuing." >&2
+    done
+}
+
+case "$INSTALL_DEPS" in
+    yes | no) install_deps ;;
+    only) install_deps; log "Done (INSTALL_DEPS=only: packages only, no tools built)"; exit 0 ;;
+    check) if install_deps; then exit 0; else exit 1; fi ;;
+    *) echo "ERROR: INSTALL_DEPS must be yes, no, only or check (got '$INSTALL_DEPS')" >&2; exit 1 ;;
+esac
 
 #########################################################################
 #                       directories and MODULEPATH                      #
